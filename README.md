@@ -43,6 +43,30 @@ Unlike processor verification labs, this work focuses on **modular integration, 
 
 ## 🧪 Simulation and Results
 
+### Run the SoC testbench with Verilator
+
+Install Verilator on Ubuntu or Debian:
+
+```bash
+sudo apt update
+sudo apt install verilator build-essential
+```
+
+From the repository root, build and run the simulation with:
+
+```bash
+./tools/run_sim.sh
+```
+
+The script places generated build files in `tools/obj_dir/` and runs from
+`rtl_files/` so the instruction image `data.mem` can be found. It also writes
+the waveform to `rtl_files/soc_wave.vcd`; open that file with GTKWave:
+
+```bash
+sudo apt install gtkwave
+gtkwave rtl_files/soc_wave.vcd
+```
+
 ### ✔️ UART Data Transmission
 - When ALU OUT = `0x1600`, UART transmits the LSB of `x6`
 - The load signal to UART is correctly asserted at this condition
@@ -97,5 +121,3 @@ src/
 ## 👨‍💻 Author
 
 **Ahmad Mukhtar**
-
-

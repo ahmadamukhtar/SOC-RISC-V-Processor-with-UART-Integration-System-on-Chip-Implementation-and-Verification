@@ -22,6 +22,8 @@ module SOC_riscv_uart_tb;
 
         clk = 0;
         reset = 1;
+        $dumpfile("soc_wave.vcd");
+        $dumpvars(0, SOC_riscv_uart_tb);
 
         #15;
         reset = 0;
@@ -32,7 +34,7 @@ module SOC_riscv_uart_tb;
 
 
         #1000;
-        $stop;
+        $finish;
     end
 
 endmodule
