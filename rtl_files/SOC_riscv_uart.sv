@@ -1,3 +1,10 @@
+// Author: Ahmad Mukhtar
+// Role: Top-level SoC wrapper connecting the CPU, UART transmitter, and memory-mapped handshake.
+// Inputs: clk clocks the processor and UART; reset initializes the CPU, UART, and transmit request.
+// Output: ser_out is the UART TX serial line (idle high, 8 data bits, one start and one stop bit).
+// Integration: A decoded store with effective address 0x640 captures x6[7:0] for UART;
+//              reads at 0x644 expose ready/busy status.
+
 `timescale 1ns / 1ps
 module SOC_riscv_uart(
     input logic clk,      // System clock

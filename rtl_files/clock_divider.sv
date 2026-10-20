@@ -1,8 +1,13 @@
+// Author: Ahmad Mukhtar
+// Role: Generates a square-wave clock by toggling after half of DIV_FACTOR input cycles.
+// Inputs: clk_in is the source clock, reset clears the divider state, DIV_FACTOR sets the period.
+// Output: clk_out toggles at the divided frequency; with a 100 MHz source, period is DIV_FACTOR cycles.
+
 module clock_divider(
-    input logic clk_in,         // 100 MHz input clock
-    input logic reset,          // Reset signal
-    output logic clk_out=1'b1,       // 1 Hz output clock
-    input logic [31:0]DIV_FACTOR
+    input logic clk_in,
+    input logic reset,
+    output logic clk_out = 1'b1,
+    input logic [31:0] DIV_FACTOR
 );
 
     // Parameter for the division factor

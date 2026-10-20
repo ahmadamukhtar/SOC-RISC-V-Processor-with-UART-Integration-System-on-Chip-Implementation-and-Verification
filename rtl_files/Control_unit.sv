@@ -1,178 +1,114 @@
+// Author: Ahmad Mukhtar
+// Role: Turns the fetched instruction fields and branch comparison flags into core control signals.
+// Inputs: opcode/funct fields identify the operation; BrEq/BrLt provide branch comparison results.
+// Outputs: select PC/immediate/ALU/memory/register-write controls and the SoC store strobe `signal`.
+// Scope: Supports the RV32I integer instructions implemented by this datapath; unsupported encodings act as NOPs.
+
 module control_unit(
-    input logic [2:0] func_3,  // Function field to distinguish instructions within the opcode
-    input logic [4:0] opcode,  // Main instruction opcode
-    input logic func_7,        // Additional function field (for some instructions like shifts, etc.)
-    input logic BrEq,          // Branch equals signal
-    input logic BrLt,          // Branch less than signal
-    output logic PCSel,        // Program counter select signal
-    output logic [2:0] ImmSel, // Immediate selection signal
-    output logic BrUn,         // Branch unsigned signal
-    output logic ASel,         // ALU A input select
-    output logic BSel,         // ALU B input select
-    output logic [3:0] ALUSel, // ALU operation select signal
-    output logic MemRW,        // Memory read/write signal
-    output logic RegWEn,       // Register write enable signal
-    output logic [1:0]WBSel,  // Write back select signal
-    output logic signal
+    input  logic [2:0] func_3,
+    input  logic [4:0] opcode,
+    input  logic       func_7,
+    input  logic       BrEq,
+    input  logic       BrLt,
+    output logic       PCSel,
+    output logic [2:0] ImmSel,
+    output logic       BrUn,
+    output logic       ASel,
+    output logic       BSel,
+    output logic [3:0] ALUSel,
+    output logic       MemRW,
+    output logic       RegWEn,
+    output logic [1:0] WBSel,
+    output logic       signal
 );
 
-always_comb begin
-    case(opcode)
-        5'b00000: begin  // Load instructions
-            case(func_3)
-                3'b000: begin  // LB - Load byte  //imm_sel_is now 12bit  load case
-                  PCSel = 0; ImmSel =0; BrUn = 0; ASel = 0; BSel = 1; ALUSel =0; MemRW = 0; RegWEn = 1; WBSel = 0;signal=0;
+    localparam logic [3:0] ALU_ADD = 4'd0, ALU_SUB = 4'd1,
+                           ALU_AND = 4'd2, ALU_OR = 4'd3,
+                           ALU_XOR = 4'd4, ALU_SLL = 4'd5,
+                           ALU_SRL = 4'd6, ALU_SRA = 4'd7,
+                           ALU_SLT = 4'd8, ALU_SLTU = 4'd9,
+                           ALU_AUIPC = 4'd10, ALU_LUI = 4'd11,
+                           ALU_JALR = 4'd12;
+    localparam logic [2:0] IMM_I = 3'd0, IMM_U = 3'd1,
+                           IMM_S = 3'd2, IMM_B = 3'd3, IMM_J = 3'd4;
+    localparam logic [1:0] WB_MEM = 2'd0, WB_ALU = 2'd1, WB_PC4 = 2'd2;
+
+    always_comb begin
+        // Safe defaults make unsupported instructions behave as NOPs.
+        PCSel = 1'b0; ImmSel = IMM_I; BrUn = 1'b0; ASel = 1'b0;
+        BSel = 1'b0; ALUSel = ALU_ADD; MemRW = 1'b0; RegWEn = 1'b0;
+        WBSel = WB_ALU; signal = 1'b0;
+
+        case (opcode)
+            5'b00000: begin // LB, LH, LW, LBU, and LHU.
+                if (func_3 inside {3'b000, 3'b001, 3'b010, 3'b100, 3'b101}) begin
+                    BSel = 1'b1; RegWEn = 1'b1; WBSel = WB_MEM;
                 end
-                3'b001: begin  // LH - Load halfword
-                      PCSel = 0; ImmSel =0; BrUn = 0; ASel = 0; BSel = 1; ALUSel =0; MemRW = 0; RegWEn = 1; WBSel = 0;signal=0;
+            end
+            5'b00100: begin // ADDI, shifts, comparisons, and logic immediates.
+                BSel = 1'b1; RegWEn = 1'b1; WBSel = WB_ALU;
+                case (func_3)
+                    3'b000: ALUSel = ALU_ADD;
+                    3'b001: ALUSel = ALU_SLL;
+                    3'b010: ALUSel = ALU_SLT;
+                    3'b011: ALUSel = ALU_SLTU;
+                    3'b100: ALUSel = ALU_XOR;
+                    3'b101: ALUSel = func_7 ? ALU_SRA : ALU_SRL;
+                    3'b110: ALUSel = ALU_OR;
+                    3'b111: ALUSel = ALU_AND;
+                    default: RegWEn = 1'b0;
+                endcase
+            end
+            5'b00101: begin // AUIPC: PC plus upper immediate.
+                ASel = 1'b1; BSel = 1'b1; ImmSel = IMM_U;
+                ALUSel = ALU_AUIPC; RegWEn = 1'b1; WBSel = WB_ALU;
+            end
+            5'b01101: begin // LUI: load upper immediate.
+                BSel = 1'b1; ImmSel = IMM_U; ALUSel = ALU_LUI;
+                RegWEn = 1'b1; WBSel = WB_ALU;
+            end
+            5'b01000: begin // SB, SH, and SW.
+                if (func_3 inside {3'b000, 3'b001, 3'b010}) begin
+                    BSel = 1'b1; ImmSel = IMM_S; MemRW = 1'b1; signal = 1'b1;
                 end
-                3'b010: begin  // LW - Load word
-                     PCSel = 0; ImmSel =0; BrUn = 0; ASel = 0; BSel = 1; ALUSel =0; MemRW = 0; RegWEn = 1; WBSel = 0;signal=0;
-                end
-                3'b100: begin  // LBU - Load byte unsigned
-                     PCSel = 0; ImmSel =0; BrUn = 0; ASel = 0; BSel = 1; ALUSel =0; MemRW = 0; RegWEn = 1; WBSel = 0;signal=0;
-                end
-                3'b101: begin  // LHU - Load halfword unsigned
-                    PCSel = 0; ImmSel =0; BrUn = 0; ASel = 0; BSel = 1; ALUSel =0; MemRW = 0; RegWEn = 1; WBSel = 0;signal=0;
-                end
-                default: begin  PCSel = 0; ImmSel =0; BrUn = 0; signal=0;ASel = 0; BSel = 0; ALUSel =0; MemRW = 0; RegWEn = 0; WBSel = 0;
-                end
-            endcase
-        end
-        
-        5'b00100: begin  // Immediate arithmetic instructions
-            case(func_3)
-                3'b000: begin  // ADDI - Add immediate
-                    PCSel = 0; ImmSel = 0; BrUn = 0; ASel = 0; BSel =1; ALUSel =0; MemRW = 0; RegWEn = 1; WBSel = 1;signal=0;
-                end
-                3'b001: begin  // SLLI - Shift left logical immediate
-                     PCSel = 0; ImmSel = 0; BrUn = 0; ASel = 0; BSel =1; ALUSel =5; MemRW = 0; RegWEn = 1; WBSel = 1;signal=0;
-                end
-                3'b010: begin  // SLTI - Set less than immediate
-                    PCSel = 0; ImmSel = 0; BrUn = 0; ASel = 0; BSel =1; ALUSel =8; MemRW = 0; RegWEn = 1; WBSel = 1;signal=0;
-                end
-                3'b011: begin  // SLTIU - Set less than immediate unsigned
-                     PCSel = 0; ImmSel = 0; BrUn = 0; ASel = 0; BSel =1; ALUSel =9; MemRW = 0; RegWEn = 1; WBSel = 1;signal=0;
-                end
-                3'b100: begin  // XORI - Exclusive OR immediate
-                     PCSel = 0; ImmSel = 0; BrUn = 0; ASel = 0; BSel =1; ALUSel =4; MemRW = 0; RegWEn = 1; WBSel = 1;signal=0;
-                end
-                3'b101: begin  // SRLI/SRAI - Shift right logical/arithmetic immediate
-                    if(func_7) begin  // SRAI - Arithmetic shift right
-                         PCSel = 0; ImmSel = 0; BrUn = 0; ASel = 0; BSel =1; ALUSel =7; MemRW = 0; RegWEn = 1; WBSel = 1;signal=0;
-                    end else begin  // SRLI - Logical shift right
-                         PCSel = 0; ImmSel = 0; BrUn = 0; ASel = 0; BSel =1; ALUSel =6; MemRW = 0; RegWEn = 1; WBSel = 1;signal=0;
-                    end
-                end
-                3'b110: begin  // ORI - OR immediate
-                    PCSel = 0; ImmSel = 0; BrUn = 0; ASel = 0; BSel =1; ALUSel =3; MemRW = 0; RegWEn = 1; WBSel = 1;signal=0;
-                end
-                3'b111: begin  // ANDI - AND immediate
-                    PCSel = 0; ImmSel = 0; BrUn = 0; ASel = 0; BSel =1; ALUSel =2; MemRW = 0; RegWEn = 1; WBSel = 1;signal=0;
-                end
-                  default: begin  PCSel = 0; ImmSel =0; BrUn = 0; ASel = 0; BSel = 0; ALUSel =0; MemRW = 0; RegWEn = 0; WBSel = 0;  end
-            endcase
-        end
-        
-        5'b00101: begin  // AUIPC - Add upper immediate to PC  //imm type is of uper lead 20 bit 
-                  PCSel = 0; ImmSel = 1; BrUn = 0; ASel = 1; BSel = 1; ALUSel =10; MemRW = 0; RegWEn = 1; WBSel = 1;signal=0;
-        end
-        
-        5'b01101: begin  // LUI - Load upper immediate  //imm type is of uper lead 20 bit  // alu sel is new type which just 12 bit sll shift the second oprand
-        PCSel = 0; ImmSel = 1; BrUn = 0; ASel = 0; BSel = 1; ALUSel = 11; MemRW = 0; RegWEn = 1; WBSel = 1;signal=0;
-        end
-        
-        5'b01000: begin  // Store instructions
-            case(func_3)
-                3'b000: begin  // SB - Store byte  //imm_gen_store_type
-                    PCSel = 0; ImmSel =2; BrUn = 0; ASel = 0; BSel = 1; ALUSel = 0; MemRW = 1; RegWEn = 0; WBSel = 0; signal=1;
-                end
-                3'b001: begin  // SH - Store halfword
-                      PCSel = 0; ImmSel =2; BrUn = 0; ASel = 0; BSel = 1; ALUSel = 0; MemRW = 1; RegWEn = 0; WBSel = 0;signal=1;
-                end
-                3'b010: begin  // SW - Store word
-                     PCSel = 0; ImmSel =2; BrUn = 0; ASel = 0; BSel = 1; ALUSel = 0; MemRW = 1; RegWEn = 0; WBSel = 0;signal=1;
-                end
-                default: begin  PCSel = 0; ImmSel =0; BrUn = 0; ASel = 0; BSel = 0; ALUSel =0; MemRW = 0; RegWEn = 0; WBSel = 0; signal=0;end
-            endcase
-        end
-        
-        5'b01100: begin  // Register-register arithmetic instructions
-            case(func_3)
-                3'b000: begin  // ADD/SUB - Addition or subtraction
-                    if(func_7) begin  // SUB - Subtraction
-                        PCSel = 0; ImmSel = 0; BrUn = 0; ASel = 0; BSel = 0; ALUSel =1; MemRW = 0; RegWEn = 1; WBSel = 1;signal=0;
-                    end else begin  // ADD - Addition
-                        PCSel = 0; ImmSel = 0; BrUn = 0; ASel = 0; BSel = 0; ALUSel =0; MemRW = 0; RegWEn = 1; WBSel = 1;signal=0;
-                    end
-                end
-                3'b001: begin  // SLL - Shift left logical
-                    PCSel = 0; ImmSel = 0; BrUn = 0; ASel = 0; BSel = 0; ALUSel =5; MemRW = 0; RegWEn = 1; WBSel = 1;signal=0;
-                end
-                3'b010: begin  // SLT - Set less than
-                    PCSel = 0; ImmSel = 0; BrUn = 0; ASel = 0; BSel = 0; ALUSel =8; MemRW = 0; RegWEn = 1; WBSel = 1;signal=0;
-                end
-                3'b011: begin  // SLTU - Set less than unsigned
-                        PCSel = 0; ImmSel = 0; BrUn = 0; ASel = 0; BSel = 0; ALUSel =9; MemRW = 0; RegWEn = 1; WBSel = 1;signal=0;
-                    end                
-                3'b100: begin  // XOR - Exclusive OR
-                   PCSel = 0; ImmSel = 0; BrUn = 0; ASel =0; BSel = 0; ALUSel =4; MemRW = 0; RegWEn = 1; WBSel = 1;signal=0;
-                end
-                3'b101: begin  // SRL/SRA - Shift right logical/arithmetic
-                   if(func_7) begin    //SRA
-                        PCSel = 0; ImmSel = 0; BrUn = 0; ASel = 0; BSel = 0; ALUSel =7; MemRW = 0; RegWEn = 1; WBSel = 1;signal=0;
-                    end else begin    //SRL
-                        PCSel = 0; ImmSel = 0; BrUn = 0; ASel = 0; BSel = 0; ALUSel =6; MemRW = 0; RegWEn = 1; WBSel = 1;signal=0;
-                    end
-                end
-                3'b110: begin  // OR - OR operation
-                    PCSel = 0; ImmSel = 0; BrUn = 0; ASel = 0; BSel = 0; ALUSel =3; MemRW = 0; RegWEn = 1; WBSel = 1;signal=0;
-                end
-                3'b111: begin  // AND - AND operation
-                   PCSel = 0; ImmSel = 0; BrUn = 0; ASel = 0; BSel = 0; ALUSel =2; MemRW = 0; RegWEn = 1; WBSel = 1;signal=0;
-                end
-                 default: begin  PCSel = 0; ImmSel =0; BrUn = 0; ASel = 0; BSel = 0; ALUSel =0; MemRW = 0; RegWEn = 0; WBSel = 0; end
-            endcase
-        end
-        
-        5'b11000: begin  // Branch instructions   //imm_sel is of brach type 
-            case(func_3)
-                3'b000: begin  // BEQ - Branch if equal
-                if(BrEq)  begin  PCSel =1; ImmSel =3; BrUn = 0; ASel = 1; BSel = 1; ALUSel = 0; MemRW = 0; RegWEn = 0; WBSel =1; signal=0;  end          begin signal=0; PCSel =0; ImmSel =0; BrUn = 0; ASel = 0; BSel = 0; ALUSel = 0; MemRW = 0; RegWEn = 0; WBSel =0; signal=0;  end       
-                end
-                3'b001: begin  // BNE - Branch if not equal
-               if(!BrEq)  begin  PCSel =1; ImmSel =3; BrUn = 0; ASel = 1; BSel = 1; ALUSel = 0; MemRW = 0; RegWEn = 0; WBSel =1; signal=0;  end   else  begin signal=0;  PCSel =0; ImmSel =0; BrUn = 0; ASel = 0; BSel = 0; ALUSel = 0; MemRW = 0; RegWEn = 0; WBSel =0;   end
-                end
-                3'b100: begin  // BLT - Branch if less than
-                   if( BrLt)  begin  PCSel =1; ImmSel =3; BrUn = 0; ASel = 1; BSel = 1; ALUSel = 0; MemRW = 0; RegWEn = 0; WBSel =1;  signal=0; end   begin signal=0; PCSel =0; ImmSel =0; BrUn = 0; ASel = 0; BSel = 0; ALUSel = 0; MemRW = 0; RegWEn = 0; WBSel =0;   end
-                end
-                3'b101: begin  // BGE - Branch if greater than or equal
-               if(!BrLt||BrEq)  begin  PCSel =1; ImmSel =3; BrUn = 0; ASel = 1; BSel = 1; ALUSel = 0; MemRW = 0; RegWEn = 0; WBSel =1; signal=0;  end   begin signal=0; PCSel =0; ImmSel =0; BrUn = 0; ASel = 0; BSel = 0; ALUSel = 0; MemRW = 0; RegWEn = 0; WBSel =0;   end
-                end
-                3'b110: begin  // BLTU - Branch if less than unsigned
-               if( BrLt)  begin  PCSel =1; ImmSel =3; BrUn =1; ASel = 1; BSel = 1; ALUSel = 0; MemRW = 0; RegWEn = 0; WBSel =1;   end   begin  signal=0; PCSel =0; ImmSel =0; BrUn = 0; ASel = 0; BSel = 0; ALUSel = 0; MemRW = 0; RegWEn = 0; WBSel =0;   end
-                end
-                3'b111: begin  // BGEU - Branch if greater than or equal unsigned
-                if(!BrLt||BrEq)  begin  PCSel =1; ImmSel =3; BrUn = 1; ASel = 1; BSel = 1; ALUSel = 0; MemRW = 0; RegWEn = 0; WBSel =1;   end   begin  signal=0; PCSel =0; ImmSel =0; BrUn = 0; ASel = 0; BSel = 0; ALUSel = 0; MemRW = 0; RegWEn = 0; WBSel =0;   end
-                end
-                default: begin  PCSel =0; ImmSel =0; BrUn = 0; ASel = 0;signal=0; BSel = 0; ALUSel = 0; MemRW = 0; RegWEn = 0; WBSel =0;   end 
-            endcase
-        end
-        5'b11001: begin  // JALR - Jump and link register//immSEL is itype so it is imm=0
-            case(func_3)
-                3'b000: begin
-               PCSel = 1; ImmSel =0; BrUn = 0; ASel = 0; BSel = 1; ALUSel =0; MemRW = 0; RegWEn = 1; WBSel =2;signal=0;
-                end
-            endcase
-        end
-        
-        5'b11011: begin  // JAL - Jump and link  //imm_sel is J type 
-            PCSel = 1; ImmSel =4; BrUn = 0; ASel = 1; BSel = 1; ALUSel = 0; MemRW = 0; RegWEn = 1; WBSel =2;signal=0;
-        end
-        
-        default: begin  // Default case
-            PCSel = 0; ImmSel = 0; BrUn = 0; ASel = 0; BSel = 0; ALUSel = 0; MemRW = 0; RegWEn = 0; WBSel = 0;signal=0;
-        end
-    endcase
-end
+            end
+            5'b01100: begin // ADD/SUB, shifts, comparisons, and logic registers.
+                RegWEn = 1'b1; WBSel = WB_ALU;
+                case (func_3)
+                    3'b000: ALUSel = func_7 ? ALU_SUB : ALU_ADD;
+                    3'b001: ALUSel = ALU_SLL;
+                    3'b010: ALUSel = ALU_SLT;
+                    3'b011: ALUSel = ALU_SLTU;
+                    3'b100: ALUSel = ALU_XOR;
+                    3'b101: ALUSel = func_7 ? ALU_SRA : ALU_SRL;
+                    3'b110: ALUSel = ALU_OR;
+                    3'b111: ALUSel = ALU_AND;
+                    default: RegWEn = 1'b0;
+                endcase
+            end
+            5'b11000: begin // BEQ, BNE, BLT, BGE, BLTU, and BGEU.
+                ASel = 1'b1; BSel = 1'b1; ImmSel = IMM_B; ALUSel = ALU_ADD;
+                case (func_3)
+                    3'b000: PCSel = BrEq;
+                    3'b001: PCSel = !BrEq;
+                    3'b100: PCSel = BrLt;
+                    3'b101: PCSel = !BrLt || BrEq;
+                    3'b110: begin PCSel = BrLt; BrUn = 1'b1; end
+                    3'b111: begin PCSel = !BrLt || BrEq; BrUn = 1'b1; end
+                    default: begin PCSel = 1'b0; ASel = 1'b0; BSel = 1'b0; end
+                endcase
+            end
+            5'b11001: begin // JALR: rs1 plus immediate, aligned to 2 bytes.
+                PCSel = 1'b1; BSel = 1'b1; ALUSel = ALU_JALR;
+                RegWEn = (func_3 == 3'b000); WBSel = WB_PC4;
+            end
+            5'b11011: begin // JAL: PC plus J-immediate.
+                PCSel = 1'b1; ASel = 1'b1; BSel = 1'b1; ImmSel = IMM_J;
+                RegWEn = 1'b1; WBSel = WB_PC4;
+            end
+            default: begin
+                // Safe NOP defaults remain active.
+            end
+        endcase
+    end
 endmodule

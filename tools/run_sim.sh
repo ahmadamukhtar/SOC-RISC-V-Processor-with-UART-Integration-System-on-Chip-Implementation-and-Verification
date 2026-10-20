@@ -1,4 +1,9 @@
 #!/usr/bin/env bash
+# Author: Ahmad Mukhtar
+# Role: Reproducible command-line entry point for the self-checking SoC integration test.
+# Inputs: RTL sources, tb/tb_SOC.sv, and rtl_files/data.mem; output: simulator result and VCD waveform.
+# Build products are kept under tools/obj_dir; simulation runs from rtl_files so $readmemh finds data.mem.
+
 set -euo pipefail
 
 SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"

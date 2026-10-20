@@ -1,3 +1,8 @@
+// Author: Ahmad Mukhtar
+// Role: Supplies the ALU's second operand in the processor datapath.
+// Inputs: BSel chooses ImmGen_out or data_R2 (register-file rs2 data).
+// Output: data_mux_b_alu is the selected 32-bit value sent to the ALU.
+
 `timescale 1ns / 1ps
 module mux_B(
     input logic BSel,
